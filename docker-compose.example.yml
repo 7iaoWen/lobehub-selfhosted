@@ -1,0 +1,95 @@
+# LobeHub 私有化部署 —— 示例配置
+# 真实值请填入 .env，不要提交到版本库
+services:
+  # ============ 数据库：PostgreSQL + pgvector ============
+  postgres:
+    image: paradedb/paradedb:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # 强密码
+      POSTGRES_DB: lobechat
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lobehub_default
+
+  # ============ 对象存储：MinIO（S3 兼容）============
+  minio:
+    image: pgsty/silo:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}   # 强密码
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"              # 上传需要浏览器跨域直连
+    ports:
+      - "9000:9000"
+    volumes:
+      - minio_data:/data
+    networks:
+      - lobehub_default
+
+  # ============ 应用：LobeHub ============
+  lobechat:
+    image: lobehub/lobehub:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- 数据库 ---
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lobechat
+      DATABASE_DRIVER: node
+
+      # --- 应用密钥（不可变，丢了要重置）---
+      KEY_VAULTS_SECRET: ${KEY_VAULTS_SECRET}      # 加密用户 API Key 的密钥，生成后永久固定
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}    # 登录会话密钥
+      JWKS_KEY: ${JWKS_KEY}                        # 身份令牌密钥集
+
+      # --- 对外地址 ---
+      APP_URL: https://your-domain.com
+
+      # --- 对象存储（关键：host 必须是浏览器可达的地址）---
+      S3_ENDPOINT: http://minio:9000               # 服务端内部访问用内网名
+      S3_PUBLIC_DOMAIN: your-domain.com:9000       # 浏览器访问用公网地址
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD} # 与 MinIO root 密码一致
+      S3_BUCKET: lobechat
+      S3_ENABLE_PATH_STYLE: "1"
+
+      # --- 网络 ---
+      SSRF_ALLOW_PRIVATE_IP_ADDRESS: "1"
+
+      # --- AI 服务 ---
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}        # 主对话模型
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY}              # embedding + 视觉兜底
+      DEFAULT_FILES_CONFIG: embedding_model=zhipu/embedding-2   # 必须 1024 维
+
+      # --- 视觉理解（当模型不支持看图时的兜底）---
+      MULTIMODAL_UNDERSTANDING_PROVIDER: zhipu
+      MULTIMODAL_UNDERSTANDING_MODEL: glm-4v-plus
+      MULTIMODAL_UNDERSTANDING_IMAGE_FORMATS: jpeg,png,webp
+
+      # --- 联网搜索 ---
+      SEARCH_PROVIDERS: search1api
+      SEARCH1API_API_KEY: ${SEARCH1API_API_KEY}
+      CRAWLER_IMPLS: naive,search1api
+
+      # --- 注册白名单（留空 = 任何人可注册，危险）---
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS}
+    ports:
+      - "3210:3210"
+    networks:
+      - lobehub_default
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  lobehub_default:
