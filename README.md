@@ -9,22 +9,68 @@
 - 建立完整的密钥管理与安全加固体系
 
 ## 技术架构
-浏览器 / 移动端
-│
-▼
-云服务器（2C4G / Ubuntu 24.04）
-│
-├── Caddy（TLS 终止 / 反向代理）
-│
-└── Docker Compose
-├── lobehub （Next.js 应用，:3210）
-├── postgres （PostgreSQL + pgvector，1024 维向量检索）
-└── minio （S3 兼容对象存储，:9000）
+```mermaid
+flowchart TB
+    subgraph Client["客户端"]
+        Browser["浏览器 / 移动端"]
+    end
 
-外部依赖：
-DeepSeek（对话，原生多模态）
-智谱 GLM（embedding-2 = 1024 维；GLM-4V 视觉兜底）
-Search1API（联网搜索）
+    subgraph Server["云服务器（2C4G / Ubuntu 24.04）"]
+        Caddy["Caddy（TLS 终止 / 反向代理）"]
+        subgraph Compose["Docker Compose"]
+            Lobe["LobeHub（Next.js · :3210）"]
+            PG["PostgreSQL + pgvector（1024 维向量）"]
+            Minio["MinIO（S3 对象存储 · :9000）"]
+        end
+    end
+
+    subgraph External["外部服务"]
+        DS["DeepSeek（对话 · 原生多模态）"]
+        GLM["智谱 GLM（embedding-2 · GLM-4V）"]
+        S1["Search1API（联网搜索）"]
+        Market["LobeHub 市场（技能 / 云沙箱）"]
+    end
+
+    Browser -->|HTTPS| Caddy
+    Caddy --> Lobe
+    Lobe --> PG
+    Lobe --> Minio
+    Lobe -.-> DS
+    Lobe -.-> GLM
+    Lobe -.-> S1
+    Lobe -.-> Market
+```
+## 功能演示
+
+### 对话能力
+> 结构化回复：Markdown 表格 + 代码块渲染
+
+<img src="docs/images/chat.png" width="720" />
+
+### 联网搜索
+> 搜索 → 抓取 → 引用，完整链路
+
+<img src="docs/images/search.png" width="720" />
+
+### 文件上传
+> 上传文件并通过 S3 对象存储预览
+
+<img src="docs/images/upload.png" width="720" />
+
+### 知识库问答
+> RAG 检索，回答带原文引用来源
+
+<img src="docs/images/kb.png" width="720" />
+
+### 视觉识别
+> 多模态图片理解
+
+<img src="docs/images/vision.png" width="720" />
+
+### 云沙箱
+> 云端代码执行，返回实际运行结果
+
+<img src="docs/images/sandbox.png" width="720" />
 ## 技术栈
 
 | 层 | 技术 |
@@ -71,3 +117,10 @@ docker compose up -d
 │   └── troubleshooting.md
 └── scripts/
     └── backup-config.sh
+    ```mermaid
+flowchart LR
+    A["① 环境准备<br/>云服务器 · IPv4 修复"] --> B["② 容器部署<br/>Docker Compose"]
+    B --> C["③ 功能调通<br/>对话/上传/搜索"]
+    C --> D["④ 安全加固<br/>密钥管理 · 白名单"]
+    D --> E["⑤ 域名备案<br/>HTTPS 收口"]
+```
